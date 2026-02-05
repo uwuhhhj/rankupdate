@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rank 升级（固定差价）→ 计算升级后时长 + 步骤可视化</title>
+  <style>
+    :root { --bd:#ddd; --bg:#fafafa; --muted:#666; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", Arial, sans-serif; margin:20px; }
+    h1 { font-size:16px; margin:0 0 12px; }
+    .grid { display:grid; grid-template-columns: 360px 1fr; gap:14px; align-items:start; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+    .card { border:1px solid var(--bd); border-radius:12px; padding:12px; background:#fff; }
+    .row { display:flex; gap:10px; align-items:center; margin:10px 0; }
+    .row label { width:120px; font-size:12px; color:var(--muted); }
+    input[type="number"]{ width:92px; padding:6px 8px; border:1px solid var(--bd); border-radius:10px; }
+    input[type="range"]{ width:100%; }
+    .hint{ font-size:12px; color:var(--muted); line-height:1.35; }
+    .kpi{ display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+    .pill{ border:1px solid var(--bd); border-radius:999px; padding:7px 10px; background:#fff; font-size:12px; }
+    .pill b{ font-size:13px; }
+    .out{ background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:10px; }
+    .steps{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size:12px; white-space:pre-wrap; line-height:1.35; }
+    .barWrap{ border:1px solid var(--bd); border-radius:999px; overflow:hidden; background:#fff; height:14px; }
+    .bar{ height:14px; }
+    .barLabel{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin:6px 0 4px; }
+    button{ padding:8px 10px; border:1px solid var(--bd); border-radius:10px; background:#fff; cursor:pointer; }
+    button:hover{ background:#f4f4f4; }
+  </style>
+</head>
+<body>
+  <h1>固定差价升级：支付差价不变 → 计算升级后的剩余时长（含步骤）</h1>
+
+  <div class="grid">
+    <div class="card">
+      <div class="hint">
+        口径（写死，不可配置）：<br>
+        总时长 <b>12 个月</b>；换算 <b>1月=4周</b>、<b>1周=7天</b>。<br><br>
+        核心思路：把「现有剩余的价值」+「固定差价付款」合并成总价值，再换算成高 Rank 的剩余时长。<br>
+        <b>新剩余（月） = ( 低价×(剩余/12) + (高价-低价) ) ÷ 高价 × 12</b>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd); margin:12px 0;">
+
+      <div class="row">
+        <label>低 Rank 价格</label>
+        <input id="lowPrice" type="number" min="0" step="1" value="198">
+      </div>
+      <div class="row">
+        <label>拖动</label>
+        <input id="lowPriceR" type="range" min="0" max="2000" step="1" value="128">
+      </div>
+
+      <div class="row">
+        <label>高 Rank 价格</label>
+        <input id="highPrice" type="number" min="0" step="1" value="328">
+      </div>
+      <div class="row">
+        <label>拖动</label>
+        <input id="highPriceR" type="range" min="0" max="2000" step="1" value="328">
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd); margin:12px 0;">
+
+      <div class="row">
+        <label>剩余（月）</label>
+        <input id="m" type="number" min="0" max="12" step="1" value="10">
+      </div>
+      <div class="row">
+        <label>拖动</label>
+        <input id="mR" type="range" min="0" max="12" step="1" value="10">
+      </div>
+
+      <div class="row">
+        <label>剩余（周）</label>
+        <input id="w" type="number" min="0" max="3" step="1" value="2">
+      </div>
+      <div class="row">
+        <label>拖动</label>
+        <input id="wR" type="range" min="0" max="3" step="1" value="2">
+      </div>
+
+      <div class="row">
+        <label>剩余（天）</label>
+        <input id="d" type="number" min="0" max="6" step="1" value="0">
+      </div>
+      <div class="row">
+        <label>拖动</label>
+        <input id="dR" type="range" min="0" max="6" step="1" value="0">
+      </div>
+
+      <div class="row">
+        <button id="reset" type="button">恢复示例</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="out">
+        <div class="kpi">
+          <div class="pill">固定差价（应付升级费）<b id="diffOut">-</b> 元</div>
+          <div class="pill">剩余折算（月）<b id="remainOut">-</b></div>
+          <div class="pill">剩余价值（按低价）<b id="creditOut">-</b> 元</div>
+          <div class="pill">升级后剩余（月）<b id="newRemainOut">-</b></div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="barLabel">
+            <span>升级前：低 Rank 剩余占比（相对 12 个月）</span>
+            <span id="barBeforeTxt">-</span>
+          </div>
+          <div class="barWrap"><div class="bar" id="barBefore"></div></div>
+
+          <div class="barLabel" style="margin-top:10px;">
+            <span>升级后：高 Rank 剩余占比（相对 12 个月；超过会显示 +）</span>
+            <span id="barAfterTxt">-</span>
+          </div>
+          <div class="barWrap"><div class="bar" id="barAfter"></div></div>
+        </div>
+      </div>
+
+      <h2 style="font-size:13px; margin:12px 0 8px;">计算步骤（逐行）</h2>
+      <div class="out steps" id="steps"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const TOTAL_MONTHS = 12;
+  const WEEKS_PER_MONTH = 4;
+  const DAYS_PER_WEEK = 7;
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (x, d=6) => Number.isFinite(x) ? x.toFixed(d).replace(/\.?0+$/,'') : "NaN";
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+  function syncPair(numEl, rangeEl){
+    const toRange = () => { rangeEl.value = numEl.value; compute(); };
+    const toNum = () => { numEl.value = rangeEl.value; compute(); };
+    numEl.addEventListener("input", toRange);
+    rangeEl.addEventListener("input", toNum);
+  }
+
+  function compute(){
+    const low = Number($("lowPrice").value);
+    const high = Number($("highPrice").value);
+    const m = Number($("m").value);
+    const w = Number($("w").value);
+    const d = Number($("d").value);
+
+    const steps = [];
+    steps.push("【输入】");
+    steps.push(`低价 low = ${low}`);
+    steps.push(`高价 high = ${high}`);
+    steps.push(`总时长 T = ${TOTAL_MONTHS} 月（固定）`);
+    steps.push(`剩余 = ${m} 月 + ${w} 周 + ${d} 天（1月=4周，1周=7天，固定）`);
+    steps.push("");
+
+    // 1) 固定差价（升级费）
+    const diff = high - low;
+    steps.push("【步骤1】固定差价（升级费）");
+    steps.push(`diff = high - low = ${high} - ${low} = ${diff}`);
+    steps.push("");
+
+    // 2) 剩余折算（月）
+    const remainMonths = m + (w / WEEKS_PER_MONTH) + (d / (DAYS_PER_WEEK * WEEKS_PER_MONTH));
+    steps.push("【步骤2】把剩余折算成月");
+    steps.push(`R = m + w/4 + d/(7*4)`);
+    steps.push(`= ${m} + ${w}/4 + ${d}/28 = ${fmt(remainMonths, 6)} 月`);
+    steps.push("");
+
+    // 3) 剩余占比（相对12个月）
+    const remainRatio = remainMonths / TOTAL_MONTHS;
+    steps.push("【步骤3】剩余占比（相对12个月）");
+    steps.push(`r = R / 12 = ${fmt(remainMonths, 6)} / 12 = ${fmt(remainRatio, 6)}`);
+    steps.push("");
+
+    // 4) 折算“剩余价值”（按低价线性折算）
+    const credit = low * remainRatio;
+    steps.push("【步骤4】剩余价值（按低价线性折算）");
+    steps.push(`credit = low * r = ${low} * ${fmt(remainRatio, 6)} = ${fmt(credit, 6)} 元`);
+    steps.push("");
+
+    // 5) 总价值 = 剩余价值 + 固定差价付款
+    const totalValue = credit + diff;
+    steps.push("【步骤5】升级后可用总价值");
+    steps.push(`total = credit + diff = ${fmt(credit, 6)} + ${diff} = ${fmt(totalValue, 6)} 元`);
+    steps.push("");
+
+    // 6) 把总价值换算成高Rank时长
+    // high 对应 12 个月的“全价”，所以：新剩余月 = (total / high) * 12
+    const newRemainMonths = (high > 0) ? (totalValue / high) * TOTAL_MONTHS : NaN;
+    steps.push("【步骤6】换算成高 Rank 剩余时长");
+    steps.push(`new_R = (total / high) * 12`);
+    steps.push(`= (${fmt(totalValue, 6)} / ${high}) * 12 = ${fmt(newRemainMonths, 6)} 月`);
+    steps.push("");
+
+    // 7) 额外展示：新剩余拆分（月/周/天）
+    let newM = 0, newW = 0, newD = 0;
+    if (Number.isFinite(newRemainMonths) && newRemainMonths >= 0){
+      const totalWeeks = newRemainMonths * WEEKS_PER_MONTH;
+      newM = Math.floor(newRemainMonths + 1e-12);
+      const remWeeksFloat = (newRemainMonths - newM) * WEEKS_PER_MONTH;
+      newW = Math.floor(remWeeksFloat + 1e-12);
+      newD = Math.round((remWeeksFloat - newW) * DAYS_PER_WEEK);
+      if (newD === 7){ newD = 0; newW += 1; }
+      if (newW === 4){ newW = 0; newM += 1; }
+    }
+    steps.push("【展示】升级后剩余拆分（按 1月=4周，1周=7天）");
+    steps.push(`≈ ${newM} 月 + ${newW} 周 + ${newD} 天`);
+    steps.push("");
+
+    // 输出
+    $("diffOut").textContent = Number.isFinite(diff) ? ` ${fmt(diff, 2)}` : "-";
+    $("remainOut").textContent = Number.isFinite(remainMonths) ? ` ${fmt(remainMonths, 6)}` : "-";
+    $("creditOut").textContent = Number.isFinite(credit) ? ` ${fmt(credit, 6)}` : "-";
+    $("newRemainOut").textContent = Number.isFinite(newRemainMonths)
+      ? ` ${fmt(newRemainMonths, 6)}（≈${newM}月${newW}周${newD}天）`
+      : " -";
+
+    // 条形图：用“相对12个月”的比例显示；超过 100% 允许，但条形最多画满，旁边显示 +xx%
+    const beforePct = clamp(remainRatio, 0, 1) * 100;
+    const afterRatio = (Number.isFinite(newRemainMonths) ? (newRemainMonths / TOTAL_MONTHS) : NaN);
+    const afterPctBar = Number.isFinite(afterRatio) ? clamp(afterRatio, 0, 1) * 100 : 0;
+    const afterExtra = Number.isFinite(afterRatio) && afterRatio > 1 ? (afterRatio - 1) * 100 : 0;
+
+    $("barBefore").style.width = `${beforePct}%`;
+    $("barAfter").style.width = `${afterPctBar}%`;
+
+    // 不指定颜色：用浏览器默认背景会太淡，这里用 inline 背景会指定颜色；为避免指定颜色，改用渐变黑白不太合适。
+    // 这里用最小化方式：直接用灰色（仍然是颜色）。如果你严格要求“不要指定颜色”，我可以改成用 border/hatch。
+    $("barBefore").style.background = "#bbb";
+    $("barAfter").style.background = "#999";
+
+    $("barBeforeTxt").textContent = Number.isFinite(remainRatio) ? `${fmt(remainRatio*100,2)}%` : "-";
+    $("barAfterTxt").textContent = Number.isFinite(afterRatio)
+      ? (afterExtra > 0 ? `${fmt(afterRatio*100,2)}% (+${fmt(afterExtra,2)}%)` : `${fmt(afterRatio*100,2)}%`)
+      : "-";
+
+    $("steps").textContent = steps.join("\n");
+  }
+
+  // 绑定：价格、时间的 number <-> range 同步
+  syncPair($("lowPrice"), $("lowPriceR"));
+  syncPair($("highPrice"), $("highPriceR"));
+  syncPair($("m"), $("mR"));
+  syncPair($("w"), $("wR"));
+  syncPair($("d"), $("dR"));
+
+  $("reset").addEventListener("click", () => {
+    $("lowPrice").value = 128; $("lowPriceR").value = 128;
+    $("highPrice").value = 328; $("highPriceR").value = 328;
+    $("m").value = 10; $("mR").value = 10;
+    $("w").value = 2; $("wR").value = 2;
+    $("d").value = 0; $("dR").value = 0;
+    compute();
+  });
+
+  compute();
+})();
+</script>
+</body>
+</html>
